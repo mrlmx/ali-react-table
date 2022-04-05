@@ -10,7 +10,14 @@ import { getRichVisibleRectsStream } from './helpers/getRichVisibleRectsStream'
 import { getFullRenderRange, makeRowHeightManager } from './helpers/rowHeightManager'
 import { TableDOMHelper } from './helpers/TableDOMUtils'
 import { HtmlTable } from './html-table'
-import { RenderInfo, ResolvedUseVirtual, VerticalRenderRange, VirtualEnum } from './interfaces'
+import {
+  DirectionType,
+  RenderInfo,
+  ResolvedUseVirtual,
+  VerticalRenderRange,
+  VirtualBuffer,
+  VirtualEnum,
+} from './interfaces'
 import Loading, { LoadingContentWrapperProps } from './loading'
 import { BaseTableCSSVariables, Classes, LOCK_SHADOW_PADDING, StyledArtTableWrapper } from './styles'
 import {
@@ -57,6 +64,8 @@ export interface BaseTableProps {
   useVirtual?: VirtualEnum | { horizontal?: VirtualEnum; vertical?: VirtualEnum; header?: VirtualEnum }
   /** 虚拟滚动开启情况下，表格中每一行的预估高度 */
   estimatedRowHeight?: number
+  /** 虚拟滚动的缓冲区（可增大渲染条数），值为缓冲区的高度 */
+  virtualBuffer?: VirtualBuffer
 
   /** @deprecated 表格头部是否置顶，默认为 true。请使用 isStickyHeader 代替 */
   isStickyHead?: boolean
@@ -136,6 +145,9 @@ interface BaseTableState {
   offsetX: number
   /** 横向虚拟滚动 最大渲染尺寸 */
   maxRenderWidth: number
+
+  /** 滚动方向 */
+  direction?: DirectionType
 }
 
 export class BaseTable extends React.Component<BaseTableProps, BaseTableState> {
@@ -152,6 +164,7 @@ export class BaseTable extends React.Component<BaseTableProps, BaseTableState> {
 
     useVirtual: 'auto',
     estimatedRowHeight: 48,
+    virtualBuffer: { horizontal: 0, vertical: 0 },
 
     isLoading: false,
     components: {},
@@ -189,6 +202,9 @@ export class BaseTable extends React.Component<BaseTableProps, BaseTableState> {
       // https://stackoverflow.com/questions/60026223/does-resizeobserver-invokes-initially-on-page-load
       maxRenderHeight: 600,
       maxRenderWidth: 800,
+
+      // 默认没有方向（没有开启虚拟滚动的情况）
+      direction: undefined,
     }
   }
 
@@ -280,11 +296,17 @@ export class BaseTable extends React.Component<BaseTableProps, BaseTableState> {
   }
 
   getVerticalRenderRange(useVirtual: ResolvedUseVirtual): VerticalRenderRange {
-    const { dataSource } = this.props
+    const { dataSource, virtualBuffer } = this.props
     const { offsetY, maxRenderHeight } = this.state
     const rowCount = dataSource.length
     if (useVirtual.vertical) {
-      return this.rowHeightManager.getRenderRange(offsetY, maxRenderHeight, rowCount)
+      return this.rowHeightManager.getRenderRange(
+        offsetY,
+        maxRenderHeight,
+        rowCount,
+        useVirtual.direction,
+        virtualBuffer,
+      )
     } else {
       return getFullRenderRange(rowCount)
     }
@@ -509,6 +531,7 @@ export class BaseTable extends React.Component<BaseTableProps, BaseTableState> {
 
   private initSubscriptions() {
     const { tableHeader, tableBody, tableFooter, stickyScroll } = this.domHelper
+    const { virtualBuffer } = this.props
 
     this.rootSubscription.add(
       throttledWindowResize$.subscribe(() => {
@@ -577,7 +600,15 @@ export class BaseTable extends React.Component<BaseTableProps, BaseTableState> {
           }),
         )
         .subscribe((sizeAndOffset) => {
-          this.setState(sizeAndOffset)
+          // 如果开启了「竖向虚拟滚动」 & 设置了「竖向缓冲区」，则需要计算一下滚动的方向
+          if (this.lastInfo.useVirtual.vertical && virtualBuffer.vertical) {
+            this.setState((pre) => ({
+              ...sizeAndOffset,
+              direction: sizeAndOffset.offsetY - pre.offsetY > 0 ? 'down' : 'up',
+            }))
+          } else {
+            this.setState(sizeAndOffset)
+          }
         }),
     )
   }

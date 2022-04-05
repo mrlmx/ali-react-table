@@ -151,7 +151,7 @@ function getHorizontalRenderRange({
 // 一顿计算，将表格本次渲染所需要的数据都给算出来（代码写得有点乱，有较大优化空间）
 // todo 可以考虑下将 header 部分的计算逻辑也放到这个文件中，目前应该有一些重复的计算逻辑
 export function calculateRenderInfo(table: BaseTable): RenderInfo {
-  const { offsetX, maxRenderWidth } = table.state
+  const { offsetX, maxRenderWidth, direction } = table.state
 
   const {
     useVirtual: useVirtualProp,
@@ -171,7 +171,7 @@ export function calculateRenderInfo(table: BaseTable): RenderInfo {
   if (leftNestedLockCount === columns.length) {
     flat = { left: [], right: [], full: fullFlat, center: fullFlat }
     nested = { left: [], right: [], full: columns, center: columns }
-    useVirtual = { horizontal: false, vertical: false, header: false }
+    useVirtual = { horizontal: false, vertical: false, header: false, direction }
   } else {
     const leftNested = columns.slice(0, leftNestedLockCount)
     const rightNestedLockCount = getLeftNestedLockCount(columns.slice().reverse())
@@ -192,6 +192,7 @@ export function calculateRenderInfo(table: BaseTable): RenderInfo {
         shouldEnableVerVirtual,
       ),
       header: resolveVirtualEnabled(typeof useVirtualProp === 'object' ? useVirtualProp.header : useVirtualProp, false),
+      direction,
     }
 
     flat = {

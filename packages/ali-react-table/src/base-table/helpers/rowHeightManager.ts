@@ -1,4 +1,4 @@
-import { VerticalRenderRange } from '../interfaces'
+import { DirectionType, VerticalRenderRange, VirtualBuffer } from '../interfaces'
 import { OVERSCAN_SIZE, sum } from '../utils'
 
 export function getFullRenderRange(rowCount: number): VerticalRenderRange {
@@ -13,7 +13,13 @@ export function getFullRenderRange(rowCount: number): VerticalRenderRange {
 export function makeRowHeightManager(initRowCount: number, estimatedRowHeight: number) {
   const cache = new Array<number>(initRowCount).fill(estimatedRowHeight)
 
-  function getRenderRange(offset: number, maxRenderHeight: number, rowCount: number) {
+  function getRenderRange(
+    offset: number,
+    maxRenderHeight: number,
+    rowCount: number,
+    direction: DirectionType,
+    virtualBuffer: VirtualBuffer,
+  ) {
     if (cache.length !== rowCount) {
       setRowCount(rowCount)
     }
@@ -61,8 +67,21 @@ export function makeRowHeightManager(initRowCount: number, estimatedRowHeight: n
       let topBlank = 0
       while (topIndex < cache.length) {
         const h = cache[topIndex]
-        if (topBlank + h >= offset) {
-          break
+        // 当前滚动方向是「向上滚动」，则增大上方的缓冲区
+        if (virtualBuffer.vertical && direction === 'up') {
+          // 如果 当前高度 <= 缓冲距离，则直接停止
+          if (offset <= virtualBuffer.vertical) {
+            break
+          }
+          // 当前高度 减去 缓冲区的高度，将缓冲区的内容渲染出来
+          if (topBlank + h >= offset - virtualBuffer.vertical) {
+            break
+          }
+        } else {
+          // 如果没有开启缓冲区 或者 当前滚动方向是「向下滚动」，则执行原有逻辑，这样可以减少上方渲染内容
+          if (topBlank + h >= offset) {
+            break
+          }
         }
         topBlank += h
         topIndex += 1
@@ -87,9 +106,19 @@ export function makeRowHeightManager(initRowCount: number, estimatedRowHeight: n
     function getEnd(endOffset: number, startInfo: Pick<VerticalRenderRange, 'topIndex' | 'topBlank'>) {
       let bottomIndex = startInfo.topIndex
       let offset = startInfo.topBlank
-      while (bottomIndex < rowCount && offset < endOffset) {
-        offset += cache[bottomIndex]
-        bottomIndex += 1
+      // 当前滚动方向是「向下滚动」，增大下方的缓冲区
+      if (virtualBuffer.vertical && direction === 'down') {
+        // 底部条数 < 总条数 & 当前高度 < [最大高度 + 缓冲区的高度]（总值可能远超于容器的总高度）
+        while (bottomIndex < rowCount && offset < endOffset + virtualBuffer.vertical) {
+          offset += cache[bottomIndex]
+          bottomIndex += 1
+        }
+      } else {
+        // 如果没有开启缓冲区 或者 当前滚动方向是「向上滚动」，则执行原有逻辑，这样可以减少下方渲染内容
+        while (bottomIndex < rowCount && offset < endOffset) {
+          offset += cache[bottomIndex]
+          bottomIndex += 1
+        }
       }
       const bottomBlank = getEstimatedTotalSize(rowCount) - offset
       return overscanDownwards(bottomIndex, bottomBlank)

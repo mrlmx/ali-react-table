@@ -26,6 +26,7 @@ export interface ResolvedUseVirtual {
   horizontal: boolean
   vertical: boolean
   header: boolean
+  direction: DirectionType
 }
 
 export interface RenderInfo {
@@ -45,4 +46,19 @@ export interface RenderInfo {
   leftLockTotalWidth: number
   /** 右侧锁定列的总宽度 */
   rightLockTotalWidth: number
+}
+
+/**
+ * 滚动方向
+ */
+export type DirectionType = 'up' | 'down' | 'left' | 'right'
+
+/**
+ * 虚拟滚动缓冲区
+ */
+export interface VirtualBuffer {
+  // 横向缓冲区
+  horizontal?: number
+  // 纵向缓冲区
+  vertical?: number
 }
